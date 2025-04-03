@@ -1,0 +1,21 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.portWin": "COM7",
+  "idf.flashType": "UART",
+  "C_Cpp.default.compilerPath": "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "files.associations": {
+    "format": "cpp",
+    "thread": "cpp",
+    "chrono": "cpp",
+    "vector": "cpp",
+    "esp_lcd_panel_gp1287.h": "c",
+    "app.h": "c",
+    "app_config.h": "c"
+  }
+}
