@@ -1,0 +1,7 @@
+[submodule "esp_idf_GP1287AI"]
+    path = esp_idf_GP1287AI
+    url = https://github.com/DmytroKoval/esp_idf_GP1287AI
+
+[submodule "u8g2"]
+    path = u8g2
+    url = https://github.com/olikraus/u8g2
