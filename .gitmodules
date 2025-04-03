@@ -1,7 +1,8 @@
 [submodule "GP1287AI"]
     path = components/GP1287AI
     url = https://github.com/DmytroKoval/esp_idf_GP1287AI
-
+    branch = master
 [submodule "u8g2"]
-    path = components/u8g2
-    url = https://github.com/olikraus/u8g2
+	path = components/u8g2
+	url = https://github.com/olikraus/u8g2
+	branch = master
