@@ -34,7 +34,7 @@
 
 static char* TAG = "GP1287-DISPLAY";
 
-static bool initialized = false; // Flag to check if the display is initialized 
+static volatile bool initialized = false;
 
 static u8g2_t u8g2;
 
@@ -42,7 +42,7 @@ static uint8_t *gbuf = NULL;
 
 static esp_lcd_panel_handle_t display_handle = NULL;
 
-static uint16_t display_brightness;
+static volatile uint16_t display_brightness;
 
 TaskHandle_t adc_task_handle = NULL;
 
@@ -53,7 +53,6 @@ static adc_oneshot_unit_handle_t brightness_adc_handle = NULL;
 /// @brief brightness sensor adc calibration handle
 /// @note This is a handle for the ADC calibration scheme, which is used to convert raw ADC values to voltage values.
 static adc_cali_handle_t brightness_adc_cali_handle = NULL;
-static time_t now;
 
 /// @brief 40ms (25Hz) display update timer
 static esp_timer_handle_t display_refresh_timer = NULL;
@@ -134,7 +133,7 @@ static uint8_t u8g2_esp32_gpio_and_delay_cb(u8x8_t *u8x8, uint8_t msg, uint8_t a
     return 0;
 }
 
-static void render_display()
+static void render_display(time_t current_time)
 {
     if (!initialized)
     {
@@ -145,7 +144,7 @@ static void render_display()
     char strfdate_buf[64];
     static bool sec = false;
 
-    localtime_r(&now, &timeinfo);
+    localtime_r(&current_time, &timeinfo);
     
     // format time
     if (sec)
@@ -181,7 +180,7 @@ static void render_display()
     u8g2_DrawLine(&u8g2, max_x - corner_size, max_y, max_x, max_y);
 
     // corner-br-v
-    u8g2_DrawLine(&u8g2, max_x, max_y - corner_size, max_x, max_x);
+    u8g2_DrawLine(&u8g2, max_x, max_y - corner_size, max_x, max_y);
 
     // corner-tr-v
     u8g2_DrawLine(&u8g2, max_x, 0, max_x, corner_size);
@@ -228,17 +227,33 @@ static void render_display()
         if (i % 10 == 0)
         {
             y0 = 31;
-            y1 = 35;
         }
         u8g2_DrawLine(&u8g2, x, y0, x, y1);
     }
 
-#if SHOW_BRIGHTNESS_LEVEL
-    // display brightness level
-    char textbuf[32];
-    sprintf(textbuf, "%d", display_brightness);
-    u8g2_int_t w = u8g2_GetStrWidth(&u8g2, textbuf);
-    u8g2_DrawStr(&u8g2, 256 - w - 5, 48, textbuf);
+#if SHOW_DEBUG_DATA
+    // display heap memory (debug)
+    // Example: "123/97k" means free/min-free in KiB
+    char txt_boot_count[32];
+    const uint32_t startup_count = app_boot_get_startup_count();
+    snprintf(txt_boot_count, sizeof(txt_boot_count), "b %lu",
+             (unsigned long)startup_count);
+    u8g2_int_t w = u8g2_GetStrWidth(&u8g2, txt_boot_count);
+    u8g2_DrawStr(&u8g2, 256 - w - 5, 28, txt_boot_count);
+
+    char txt_heap[32];
+    const uint32_t free_heap = esp_get_free_heap_size();
+    snprintf(txt_heap, sizeof(txt_heap), "f %lu",
+    (unsigned long)(free_heap / 1024));
+    w = u8g2_GetStrWidth(&u8g2, txt_heap);
+    u8g2_DrawStr(&u8g2, 256 - w - 5, 38, txt_heap);
+    
+    char txt_min_heap[32];
+    const uint32_t min_free_heap = esp_get_minimum_free_heap_size();
+    snprintf(txt_min_heap, sizeof(txt_min_heap), "m %lu",
+             (unsigned long)(min_free_heap / 1024));
+    w = u8g2_GetStrWidth(&u8g2, txt_min_heap);
+    u8g2_DrawStr(&u8g2, 256 - w - 5, 48, txt_min_heap);
 #endif
     sec = !sec;
 }
@@ -299,13 +314,19 @@ static esp_err_t init_brightness_sensor()
 {
     esp_err_t ret = ESP_OK;
     static bool calibrated = false;
+
+    if (adc_task_handle != NULL) {
+        // already initialized
+        return ESP_OK;
+    }
+
     adc_oneshot_unit_init_cfg_t brightness_adc_config = {
         .unit_id = DISPLAY_BRIGHTNESS_ADC_UNIT,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
 
     ret = adc_oneshot_new_unit(&brightness_adc_config, &brightness_adc_handle);
-    ESP_RETURN_ON_ERROR(ret, TAG, "ADC unit init failed");
+    ESP_GOTO_ON_ERROR(ret, cleanup, TAG, "ADC unit init failed");
 
     adc_oneshot_chan_cfg_t config = {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
@@ -313,7 +334,7 @@ static esp_err_t init_brightness_sensor()
     };
 
     ret = adc_oneshot_config_channel(brightness_adc_handle, ADC_CHANNEL_4, &config);
-    ESP_RETURN_ON_ERROR(ret, TAG, "ADC channel init failed");
+    ESP_GOTO_ON_ERROR(ret, cleanup, TAG, "ADC channel init failed");
 
     if (!calibrated)
     {
@@ -325,15 +346,40 @@ static esp_err_t init_brightness_sensor()
             .bitwidth = ADC_BITWIDTH_DEFAULT,
         };
         ret = adc_cali_create_scheme_curve_fitting(&cali_config, &brightness_adc_cali_handle);
-        ESP_RETURN_ON_ERROR(ret, TAG, "ADC calibration failed");
+        ESP_GOTO_ON_ERROR(ret, cleanup, TAG, "ADC calibration failed");
         calibrated = true;
     }
+
     BaseType_t result = xTaskCreate(adc_task, "ADC_Task", ADC_TASK_STACK_SIZE, NULL, ADC_TASK_PRIORITY, &adc_task_handle);
-    return result == pdPASS ? ESP_OK : ESP_FAIL;
+    if (result != pdPASS) {
+        ret = ESP_FAIL;
+        goto cleanup;
+    }
+    return ESP_OK;
+
+cleanup:
+    if (adc_task_handle != NULL) {
+        vTaskDelete(adc_task_handle);
+        adc_task_handle = NULL;
+    }
+    if (brightness_adc_cali_handle != NULL) {
+        adc_cali_delete_scheme_curve_fitting(brightness_adc_cali_handle);
+        brightness_adc_cali_handle = NULL;
+        calibrated = false;
+    }
+    if (brightness_adc_handle != NULL) {
+        adc_oneshot_del_unit(brightness_adc_handle);
+        brightness_adc_handle = NULL;
+    }
+    return ret;
 }
 
 static void setup_timers(esp_timer_cb_t cb)
 {
+    if (display_refresh_timer != NULL) {
+        // already created
+        return;
+    }
     esp_timer_create_args_t display_refresh_timer_config = {
         .callback = cb,
         .arg = NULL,
@@ -354,6 +400,10 @@ esp_err_t setup_display()
     esp_err_t ret = ESP_OK;
     const size_t buf_size = 256 * 16;
 
+    if (initialized) {
+        return ESP_OK;
+    }
+
     // setup display
     ret = setup_GP1287(&display_handle);
     ESP_RETURN_ON_ERROR(ret, TAG, "GP1287 setup failed");
@@ -361,7 +411,9 @@ esp_err_t setup_display()
     ESP_RETURN_ON_ERROR(ret, TAG, "Brightness sensor setup failed");
 
     //setup display buffer
-    gbuf = (uint8_t *)heap_caps_calloc(1, buf_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (gbuf == NULL) {
+        gbuf = (uint8_t *)heap_caps_calloc(1, buf_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    }
     ESP_RETURN_ON_FALSE(gbuf != NULL, ESP_FAIL, TAG, "no mem for gbuf %u", buf_size);
 
     // init graphics library
@@ -378,8 +430,7 @@ esp_err_t setup_display()
 
 void set_time(time_t t)
 {
-    now = t;
-    render_display();
+    render_display(t);
 }
 
 esp_err_t display_on()

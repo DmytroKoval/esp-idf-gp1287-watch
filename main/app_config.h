@@ -7,11 +7,6 @@ extern "C"
 {
 #endif
 
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT BIT1
-#define WIFI_MAXIMUM_RETRY 5
-#define WIFI_SSID "AMBER_Network"
-#define WIFI_PASS "001234500"
 
 #define LCD_SPI_HOST SPI2_HOST
 #define DISPLAY_SPI_DC GPIO_NUM_NC
@@ -37,7 +32,7 @@ extern "C"
 #define DEFAULT_BRIGHTNESS 20                        
 
 /// @brief Render brightness level (0, 1)
-#define SHOW_BRIGHTNESS_LEVEL 0
+#define SHOW_DEBUG_DATA 1
 
 #define TIME_UPDATE_INTERVAL (500 * 1000)
 

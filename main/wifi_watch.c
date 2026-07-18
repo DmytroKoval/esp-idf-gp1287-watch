@@ -13,7 +13,7 @@
 #define TAG "GP1287-APP"
 
 
-static void IRAM_ATTR clock_timer_callback(void* arg)
+static void clock_timer_callback(void* arg)
 {
     time_t now;
     time(&now);
@@ -22,6 +22,8 @@ static void IRAM_ATTR clock_timer_callback(void* arg)
 
 void app_main()
 {
+    app_boot_log_startup();
+
     setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
     tzset();
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <time.h>
+#include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
 #ifndef __APP_H__
@@ -16,8 +18,10 @@ extern "C" {
     .skip_unhandled_events = false \
 }
 
-bool init_wifi();
-void start_sntp_service();
+void app_boot_log_startup(void);
+uint32_t app_boot_get_startup_count(void);
+bool init_wifi(void);
+void start_sntp_service(void);
 
 esp_err_t display_on();
 esp_err_t display_off();

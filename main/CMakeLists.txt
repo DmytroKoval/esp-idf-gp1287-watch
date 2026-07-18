@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "wifi_watch.c"
+        "app/app_boot.c"
         "app/app_wifi.c"
         "app/app_display.c"
     INCLUDE_DIRS
