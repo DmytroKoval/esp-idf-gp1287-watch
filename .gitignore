@@ -3,4 +3,6 @@ sdkconfig
 sdkconfig.old
 components
 dependencies.lock
+graphify-out
+managed_components
 .vscode

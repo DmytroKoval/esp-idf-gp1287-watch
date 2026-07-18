@@ -23,7 +23,8 @@
 #include "u8g2.h"
 #include "esp_lcd_panel_gp1287.h"
 #include "../app_config.h"
-#include "../app.h"
+#include "app_alert.h"
+#include "app_weather.h"
 
 #define V_MAX 3400                                   // Maximum voltage for ADC in mV
 #define DEFAULT_VREF 1100                            // Default reference voltage for ADC in mV
@@ -66,7 +67,7 @@ static esp_err_t setup_GP1287(esp_lcd_panel_handle_t *panel_handle)
         .flags = SPICOMMON_BUSFLAG_MASTER,
         .max_transfer_sz = (256 * 128) >> 3,
     };
-    
+
     esp_err_t ret = spi_bus_initialize(LCD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO);
     ESP_RETURN_ON_ERROR(ret, TAG, "SPI bus init failed");
 
@@ -112,149 +113,187 @@ static esp_err_t setup_GP1287(esp_lcd_panel_handle_t *panel_handle)
 }
 
 /// @brief u8g2 callback stub for SPI transfer (not used)
-/// @param u8x8 
-/// @param msg 
-/// @param arg_int 
-/// @param arg_ptr 
-/// @return 
+/// @param u8x8
+/// @param msg
+/// @param arg_int
+/// @param arg_ptr
+/// @return
 static uint8_t u8g2_esp32_spi_byte_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr)
 {
     return 0;
 }
 
 /// @brief u8g2 callback stub for GPIO and delay (not used)
-/// @param u8x8 
-/// @param msg 
-/// @param arg_int 
-/// @param arg_ptr 
-/// @return 
+/// @param u8x8
+/// @param msg
+/// @param arg_int
+/// @param arg_ptr
+/// @return
 static uint8_t u8g2_esp32_gpio_and_delay_cb(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr)
 {
     return 0;
 }
 
+static void draw_seconds_scale(int seconds)
+{
+    const int first_x = 8;
+    const int y = 35;
+
+    u8g2_DrawLine(&u8g2, 6, y - 2, 6, y + 2);
+    u8g2_DrawLine(&u8g2, 7, y - 3, 9, y - 3);
+    u8g2_DrawLine(&u8g2, 7, y + 3, 9, y + 3);
+    u8g2_DrawLine(&u8g2, 126, y - 2, 126, y + 2);
+    u8g2_DrawLine(&u8g2, 123, y - 3, 125, y - 3);
+    u8g2_DrawLine(&u8g2, 123, y + 3, 125, y + 3);
+
+    for (int second = 1; second <= 60; ++second)
+    {
+        const int x = first_x + (second - 1) * 2;
+        if (second > seconds)
+        {
+            u8g2_DrawPixel(&u8g2, x, y);
+            continue;
+        }
+
+        int top = y - 1;
+        int bottom = y + 1;
+        if (second % 5 == 0)
+        {
+            bottom = y + 2;
+        }
+        if (second % 10 == 0)
+        {
+            top = y - 2;
+            bottom = y + 2;
+        }
+        u8g2_DrawLine(&u8g2, x, top, x, bottom);
+    }
+}
+
+static uint8_t weather_glyph(const app_weather_snapshot_t *weather)
+{
+    if (weather->condition_code == 800)
+    {
+        return weather->is_night ? 'B' : 'E';
+    }
+    if (weather->condition_code == 801 || weather->condition_code == 802)
+    {
+        return 'A';
+    }
+    if ((weather->condition_code >= 200 && weather->condition_code < 600)
+        || (weather->condition_code >= 600 && weather->condition_code < 700))
+    {
+        return 'C';
+    }
+    return '@';
+}
+
+static void draw_weather(void)
+{
+    const app_weather_snapshot_t weather = app_weather_get_snapshot();
+
+    u8g2_SetFont(&u8g2, u8g2_font_open_iconic_weather_4x_t);
+    if (weather.valid)
+    {
+        u8g2_DrawGlyph(&u8g2, 149, 32, weather_glyph(&weather));
+    }
+    else
+    {
+        u8g2_DrawGlyph(&u8g2, 149, 32, '@');
+    }
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
+    char temperature[8];
+    if (weather.valid)
+    {
+        snprintf(temperature, sizeof(temperature), "%d", weather.temperature_c);
+    }
+    else
+    {
+        strcpy(temperature, "--");
+    }
+
+    u8g2_DrawStr(&u8g2, 194, 28, temperature);
+    const u8g2_uint_t temperature_width = u8g2_GetStrWidth(&u8g2, temperature);
+    u8g2_DrawGlyph(&u8g2, 194 + temperature_width + 1, 20, 0xB0);
+}
+
+static void draw_alert(const app_alert_view_t *alert, time_t current_time)
+{
+    struct tm detected_time;
+    char start_time[8];
+    const time_t detected_at = (time_t)alert->detected_at;
+    localtime_r(&detected_at, &detected_time);
+    strftime(start_time, sizeof(start_time), "%H:%M", &detected_time);
+
+    time_t duration = current_time - (time_t)alert->detected_at;
+    if (duration < 0)
+    {
+        duration = 0;
+    }
+
+    char duration_text[16];
+    snprintf(duration_text, sizeof(duration_text), "%ldh %02ldm",
+             (long)(duration / 3600), (long)((duration % 3600) / 60));
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    const u8g2_uint_t start_width = u8g2_GetStrWidth(&u8g2, start_time);
+    const u8g2_uint_t duration_width = u8g2_GetStrWidth(&u8g2, duration_text);
+
+    if (alert->show_triangle)
+    {
+        u8g2_DrawTriangle(&u8g2, 172, 0, 189, 34, 155, 34);
+        u8g2_SetDrawColor(&u8g2, 0);
+        u8g2_DrawBox(&u8g2, 170, 28, 5, 4);
+        u8g2_DrawTriangle(&u8g2, 172, 24, 176, 11, 168, 11);
+        u8g2_SetDrawColor(&u8g2, 1);
+    }
+
+    const int text_center = 202 + (int)start_width / 2;
+    u8g2_DrawStr(&u8g2, 202, 16, start_time);
+    u8g2_DrawStr(&u8g2, text_center - (int)duration_width / 2, 28, duration_text);
+}
+
 static void render_display(time_t current_time)
 {
+    static bool sec = false;
+
     if (!initialized)
     {
         return;
     }
+
     struct tm timeinfo;
-    char strftime_buf[64];
-    char strfdate_buf[64];
-    static bool sec = false;
+    char time_text[8];
+    char date_text[32];
 
     localtime_r(&current_time, &timeinfo);
-    
-    // format time
-    if (sec)
+    strftime(time_text, sizeof(time_text), sec ? "%H:%M" : "%H %M", &timeinfo);
+    strftime(date_text, sizeof(date_text), "%a, %b %d, %Y", &timeinfo);
+
+    u8g2_ClearBuffer(&u8g2);
+    u8g2_SetDrawColor(&u8g2, 1);
+    u8g2_SetFontMode(&u8g2, 1);
+
+    u8g2_DrawRFrame(&u8g2, 2, 2, 129, 46, 2);
+    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
+    const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
+    u8g2_DrawStr(&u8g2, 66 - (int)time_width / 2, 28, time_text);
+    draw_seconds_scale(timeinfo.tm_sec);
+
+    const app_alert_view_t alert = app_alert_get_view();
+    if (alert.replace_weather)
     {
-        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M", &timeinfo);
+        draw_alert(&alert, current_time);
     }
     else
     {
-        strftime(strftime_buf, sizeof(strftime_buf), "%H %M", &timeinfo);
+        draw_weather();
     }
 
-    u8g2_ClearBuffer(&u8g2);
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    u8g2_DrawStr(&u8g2, 144, 46, date_text);
 
-    u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_SetFontMode(&u8g2, 1);
-#if 1
-    const u8g2_uint_t corner_size = 5;
-    const u8g2_uint_t max_x = 255;
-    const u8g2_uint_t max_y = 49;
-    // corner-tl-h
-    u8g2_DrawLine(&u8g2, 0, 0, corner_size, 0);
-
-    // corner-tl-v
-    u8g2_DrawLine(&u8g2, 0, 0, 0, corner_size);
-
-    // corner-bl-h
-    u8g2_DrawLine(&u8g2, 0, max_y, corner_size, max_y);
-
-    // corner-bl-v
-    u8g2_DrawLine(&u8g2, 0, max_y - corner_size, 0, max_y);
-
-    // corner-br-h
-    u8g2_DrawLine(&u8g2, max_x - corner_size, max_y, max_x, max_y);
-
-    // corner-br-v
-    u8g2_DrawLine(&u8g2, max_x, max_y - corner_size, max_x, max_y);
-
-    // corner-tr-v
-    u8g2_DrawLine(&u8g2, max_x, 0, max_x, corner_size);
-
-    // corner-tr-h
-    u8g2_DrawLine(&u8g2, max_x - corner_size, 0, max_x, 0);
-#endif
-    const int left = 67;
-    // time_box
-    u8g2_DrawRFrame(&u8g2, left + 3, 3, 121, 25, 2);
-
-    // time
-    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
-    u8g2_DrawStr(&u8g2, left + 25, 25, strftime_buf);
-
-    // date
-    u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_SetFont(&u8g2, u8g2_font_profont12_tf);
-    // format date
-    strftime(strfdate_buf, sizeof(strfdate_buf), "%a, %b %d, %Y", &timeinfo);
-    u8g2_DrawStr(&u8g2, left + 13, 47, strfdate_buf);
-
-    // seconds_bar
-    u8g2_DrawRFrame(&u8g2, left + 3, 30, 121, 7, 1);
-    u8g2_SetDrawColor(&u8g2, 0);
-    // second-bar-mask-top
-    u8g2_DrawLine(&u8g2, left + 8, 30, left + 118, 30);
-    // second-bar-mask-bottom
-    u8g2_DrawLine(&u8g2, left + 8, 36, left + 118, 36);
-
-
-    // fill seconds bar
-    u8g2_SetDrawColor(&u8g2, 1);
-    uint8_t x, y0, y1;
-    for (int i = 1; i <= timeinfo.tm_sec; i++)
-    {
-        x = left + 5 + (i - 1) * 2;
-        y0 = 32;
-        y1 = 34;
-        if (i % 5 == 0)
-        {
-            y1 = 35;
-        }
-        if (i % 10 == 0)
-        {
-            y0 = 31;
-        }
-        u8g2_DrawLine(&u8g2, x, y0, x, y1);
-    }
-
-#if SHOW_DEBUG_DATA
-    // display heap memory (debug)
-    // Example: "123/97k" means free/min-free in KiB
-    char txt_boot_count[32];
-    const uint32_t startup_count = app_boot_get_startup_count();
-    snprintf(txt_boot_count, sizeof(txt_boot_count), "b %lu",
-             (unsigned long)startup_count);
-    u8g2_int_t w = u8g2_GetStrWidth(&u8g2, txt_boot_count);
-    u8g2_DrawStr(&u8g2, 256 - w - 5, 28, txt_boot_count);
-
-    char txt_heap[32];
-    const uint32_t free_heap = esp_get_free_heap_size();
-    snprintf(txt_heap, sizeof(txt_heap), "f %lu",
-    (unsigned long)(free_heap / 1024));
-    w = u8g2_GetStrWidth(&u8g2, txt_heap);
-    u8g2_DrawStr(&u8g2, 256 - w - 5, 38, txt_heap);
-    
-    char txt_min_heap[32];
-    const uint32_t min_free_heap = esp_get_minimum_free_heap_size();
-    snprintf(txt_min_heap, sizeof(txt_min_heap), "m %lu",
-             (unsigned long)(min_free_heap / 1024));
-    w = u8g2_GetStrWidth(&u8g2, txt_min_heap);
-    u8g2_DrawStr(&u8g2, 256 - w - 5, 48, txt_min_heap);
-#endif
     sec = !sec;
 }
 
@@ -387,7 +426,7 @@ static void setup_timers(esp_timer_cb_t cb)
         .name = "display refresh",
         .skip_unhandled_events = false
     };
-    
+
     esp_timer_create(&display_refresh_timer_config, &display_refresh_timer);
     // 25Hz display update
     esp_timer_start_periodic(display_refresh_timer, 40000);
@@ -419,7 +458,7 @@ esp_err_t setup_display()
     // init graphics library
     u8g2_Setup_gp1287ai_256x50_f(&u8g2, U8G2_R0, u8g2_esp32_spi_byte_cb, u8g2_esp32_gpio_and_delay_cb);
     u8g2_InitDisplay(&u8g2);
-    
+
     u8g2.tile_buf_ptr = gbuf;
 
     // setup display timers

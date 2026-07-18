@@ -22,6 +22,8 @@ void app_boot_log_startup(void);
 uint32_t app_boot_get_startup_count(void);
 bool init_wifi(void);
 void start_sntp_service(void);
+void start_alert_service(void);
+void start_weather_service(void);
 
 esp_err_t display_on();
 esp_err_t display_off();

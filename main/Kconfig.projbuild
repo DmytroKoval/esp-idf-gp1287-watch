@@ -19,3 +19,19 @@ menu "Watch WiFi Configuration"
             Maximum number of retries before giving up on WiFi connection.
 
 endmenu
+
+menu "Watch web services"
+
+    config ALERTS_API_TOKEN
+        string "alerts.in.ua API token"
+        default ""
+        help
+            Bearer token for the alerts.in.ua IoT endpoint.
+
+    config WEATHER_API_KEY
+        string "OpenWeather API key"
+        default ""
+        help
+            API key for the OpenWeather One Call request.
+
+endmenu

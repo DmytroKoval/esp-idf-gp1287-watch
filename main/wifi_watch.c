@@ -39,6 +39,8 @@ void app_main()
     {
         ESP_LOGW(TAG, ">> WiFi initialized successfully");
         start_sntp_service();
+        start_alert_service();
+        start_weather_service();
     }
     else
     {

@@ -4,3 +4,4 @@ dependencies:
   u8g2:
     version: "*"
     override_path: "../components/u8g2"
+  espressif/cjson: "^1.7.19~2"
