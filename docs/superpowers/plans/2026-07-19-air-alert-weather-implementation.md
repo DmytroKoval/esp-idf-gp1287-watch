@@ -21,12 +21,12 @@
 
 ```c
 assert_view(app_alert_state_view(&state, 0), false, false);
-app_alert_state_apply(&state, true, 100, 1'000'000);
-assert_view(app_alert_state_view(&state, 110, 1'500'000), true, false);
-assert_view(app_alert_state_view(&state, 110, 2'000'000), true, true);
-app_alert_state_apply(&state, false, 140, 31'000'000);
-assert_view(app_alert_state_view(&state, 141, 31'250'000), true, true);
-assert_view(app_alert_state_view(&state, 151, 41'000'000), false, false);
+app_alert_state_apply(&state, true, 100, 1000000);
+assert_view(app_alert_state_view(&state, 110, 1500000), true, false);
+assert_view(app_alert_state_view(&state, 110, 2000000), true, true);
+app_alert_state_apply(&state, false, 140, 31000000);
+assert_view(app_alert_state_view(&state, 141, 31250000), true, true);
+assert_view(app_alert_state_view(&state, 151, 41000000), false, false);
 ```
 
 - [ ] **Step 2: Compile and run the failing test**
