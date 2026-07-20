@@ -34,7 +34,7 @@ extern "C"
 /// @brief Render brightness level (0, 1)
 #define SHOW_DEBUG_DATA 1
 
-#define TIME_UPDATE_INTERVAL (500 * 1000)
+#define TIME_UPDATE_INTERVAL (250 * 1000)
 
 #define SNTP_SYNC_INTERVAL (pdMS_TO_TICKS(60 * 60 * 1000))
 

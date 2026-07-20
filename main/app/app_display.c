@@ -137,7 +137,7 @@ static uint8_t u8g2_esp32_gpio_and_delay_cb(u8x8_t *u8x8, uint8_t msg, uint8_t a
 static void draw_seconds_scale(int seconds)
 {
     const int first_x = 8;
-    const int y = 35;
+    const int y = 38;
 
     u8g2_DrawLine(&u8g2, 6, y - 2, 6, y + 2);
     u8g2_DrawLine(&u8g2, 7, y - 3, 9, y - 3);
@@ -256,7 +256,8 @@ static void draw_alert(const app_alert_view_t *alert, time_t current_time)
 
 static void render_display(time_t current_time)
 {
-    static bool sec = false;
+    static bool show_colon = false;
+    static bool second_frame = false;
 
     if (!initialized)
     {
@@ -268,7 +269,7 @@ static void render_display(time_t current_time)
     char date_text[32];
 
     localtime_r(&current_time, &timeinfo);
-    strftime(time_text, sizeof(time_text), sec ? "%H:%M" : "%H %M", &timeinfo);
+    strftime(time_text, sizeof(time_text), show_colon ? "%H:%M" : "%H %M", &timeinfo);
     strftime(date_text, sizeof(date_text), "%a, %b %d, %Y", &timeinfo);
 
     u8g2_ClearBuffer(&u8g2);
@@ -278,7 +279,7 @@ static void render_display(time_t current_time)
     u8g2_DrawRFrame(&u8g2, 2, 2, 129, 46, 2);
     u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
     const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
-    u8g2_DrawStr(&u8g2, 66 - (int)time_width / 2, 28, time_text);
+    u8g2_DrawStr(&u8g2, 66 - (int)time_width / 2, 29, time_text);
     draw_seconds_scale(timeinfo.tm_sec);
 
     const app_alert_view_t alert = app_alert_get_view();
@@ -294,7 +295,11 @@ static void render_display(time_t current_time)
     u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
     u8g2_DrawStr(&u8g2, 144, 46, date_text);
 
-    sec = !sec;
+    if (second_frame)
+    {
+        show_colon = !show_colon;
+    }
+    second_frame = !second_frame;
 }
 
 static void refresh_display_cb(void *arg)
@@ -465,6 +470,14 @@ esp_err_t setup_display()
     setup_timers(refresh_display_cb);
     initialized = true;
     return ret;
+}
+
+esp_err_t test_display()
+{
+    esp_lcd_panel_set_brightness(display_handle, 20);
+    memset(gbuf, 0xFF, 256 * 16);
+    esp_lcd_panel_draw_bitmap(display_handle, 0, 0, 256, 128, gbuf);
+    return ESP_OK;
 }
 
 void set_time(time_t t)

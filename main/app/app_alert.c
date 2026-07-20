@@ -12,7 +12,7 @@
 #include "esp_timer.h"
 #include "sdkconfig.h"
 
-#define ALERTS_URL "https://api.alerts.in.ua/v1/iot/active_air_raid_alerts/9.json"
+#define ALERTS_URL "https://api.alerts.in.ua/v1/iot/active_air_raid_alerts/42.json"
 #define ALERTS_POLL_INTERVAL_MS 60000
 #define ALERTS_TASK_STACK_SIZE 4096
 

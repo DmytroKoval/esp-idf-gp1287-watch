@@ -28,7 +28,12 @@ void app_main()
     tzset();
 
     setup_display();
-    
+    // test_display();
+    // while(1)
+    // {
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
+
     esp_timer_create_args_t clock_timer_config = TIME_UPDATE_TIMER_CONFIG;
     esp_timer_handle_t display_update_timer = NULL;    
     esp_timer_create(&clock_timer_config, &display_update_timer);

@@ -29,6 +29,7 @@ esp_err_t display_on();
 esp_err_t display_off();
 esp_err_t display_set_brightness(uint16_t brightness);
 esp_err_t setup_display();
+esp_err_t test_display();
 void set_time(time_t t);
 
 #ifdef __cplusplus
