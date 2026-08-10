@@ -10,6 +10,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
+#include "app_startup.h"
 
 #define WEATHER_URL_FORMAT "https://api.openweathermap.org/data/3.0/onecall?lat=48.5168&lon=34.6069&exclude=minutely,hourly,daily,alerts&units=metric&appid=%s"
 #define WEATHER_POLL_INTERVAL_MS (60 * 60 * 1000)
@@ -118,12 +119,12 @@ static bool parse_weather(const char *response, app_weather_snapshot_t *snapshot
     return valid;
 }
 
-static void refresh_weather(void)
+static bool refresh_weather(void)
 {
     if (CONFIG_WEATHER_API_KEY[0] == '\0')
     {
         ESP_LOGW(TAG, "OpenWeather API key is not configured");
-        return;
+        return false;
     }
 
     static char response[WEATHER_RESPONSE_SIZE];
@@ -132,19 +133,27 @@ static void refresh_weather(void)
     if (result != ESP_OK || !parse_weather(response, &next_snapshot))
     {
         ESP_LOGW(TAG, "Weather request failed; keeping current weather");
-        return;
+        return false;
     }
 
     portENTER_CRITICAL(&weather_lock);
     weather_snapshot = next_snapshot;
     portEXIT_CRITICAL(&weather_lock);
+    return true;
 }
 
 static void weather_task(void *arg)
 {
+    bool first_request = true;
     while (true)
     {
-        refresh_weather();
+        const bool success = refresh_weather();
+        if (first_request)
+        {
+            app_startup_set(APP_STARTUP_WEATHER,
+                            success ? APP_STARTUP_OK : APP_STARTUP_ERROR);
+            first_request = false;
+        }
         vTaskDelay(pdMS_TO_TICKS(WEATHER_POLL_INTERVAL_MS));
     }
 }
@@ -161,6 +170,7 @@ void start_weather_service(void)
     {
         ESP_LOGE(TAG, "Failed to start weather task");
         weather_task_handle = NULL;
+        app_startup_set(APP_STARTUP_WEATHER, APP_STARTUP_ERROR);
     }
 }
 

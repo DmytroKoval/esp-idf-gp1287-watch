@@ -14,9 +14,20 @@ menu "Watch WiFi Configuration"
 
     config WIFI_MAXIMUM_RETRY
         int "Maximum retry attempts"
-        default 5
+        default 10
         help
             Maximum number of retries before giving up on WiFi connection.
+
+endmenu
+
+menu "Watch display"
+
+    config NIGHT_MODE_BRIGHTNESS_THRESHOLD
+        int "Night mode brightness threshold"
+        range 0 600
+        default 20
+        help
+            Enter duty mode when calculated display brightness is at or below this value.
 
 endmenu
 

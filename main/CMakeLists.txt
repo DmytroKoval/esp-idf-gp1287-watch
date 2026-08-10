@@ -4,6 +4,8 @@ idf_component_register(
         "app/app_boot.c"
         "app/app_wifi.c"
         "app/app_alert_state.c"
+        "app/app_startup_state.c"
+        "app/app_startup.c"
         "app/app_alert.c"
         "app/app_weather.c"
         "app/app_display.c"

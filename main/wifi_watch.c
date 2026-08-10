@@ -9,6 +9,7 @@
 #include <esp_log.h>
 #include "app.h"
 #include "app_config.h"
+#include "app/app_startup.h"
 
 #define TAG "GP1287-APP"
 
@@ -27,6 +28,7 @@ void app_main()
     setenv("TZ", "EET-2EEST,M3.5.0/3,M10.5.0/4", 1);
     tzset();
 
+    app_startup_init();
     setup_display();
     // test_display();
     // while(1)

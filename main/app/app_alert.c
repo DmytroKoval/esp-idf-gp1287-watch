@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "sdkconfig.h"
+#include "app_startup.h"
 
 #define ALERTS_URL "https://api.alerts.in.ua/v1/iot/active_air_raid_alerts/42.json"
 #define ALERTS_POLL_INTERVAL_MS 60000
@@ -108,12 +109,12 @@ static esp_err_t fetch_alert_status(char *response, size_t response_size, int *h
     return result;
 }
 
-static void poll_alerts(void)
+static bool poll_alerts(void)
 {
     if (CONFIG_ALERTS_API_TOKEN[0] == '\0')
     {
         ESP_LOGW(TAG, "alerts.in.ua token is not configured");
-        return;
+        return false;
     }
 
     char response[8] = {0};
@@ -124,7 +125,7 @@ static void poll_alerts(void)
         ESP_LOGW(TAG, "Alert status request failed: result=%s, HTTP=%d, status=%c",
                  esp_err_to_name(result), http_status,
                  response[0] == '\0' ? '-' : response[0]);
-        return;
+        return false;
     }
 
     time_t detected_at;
@@ -134,13 +135,21 @@ static void poll_alerts(void)
     app_alert_state_apply(&alert_state, is_active_status(response), detected_at,
                           esp_timer_get_time());
     portEXIT_CRITICAL(&alert_state_lock);
+    return true;
 }
 
 static void alert_task(void *arg)
 {
+    bool first_request = true;
     while (true)
     {
-        poll_alerts();
+        const bool success = poll_alerts();
+        if (first_request)
+        {
+            app_startup_set(APP_STARTUP_ALERTS,
+                            success ? APP_STARTUP_OK : APP_STARTUP_ERROR);
+            first_request = false;
+        }
         vTaskDelay(pdMS_TO_TICKS(ALERTS_POLL_INTERVAL_MS));
     }
 }
@@ -158,6 +167,7 @@ void start_alert_service(void)
     {
         ESP_LOGE(TAG, "Failed to start alert task");
         alert_task_handle = NULL;
+        app_startup_set(APP_STARTUP_ALERTS, APP_STARTUP_ERROR);
     }
 }
 

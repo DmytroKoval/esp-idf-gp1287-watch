@@ -17,6 +17,7 @@
 #include <esp_netif_sntp.h>
 #include "app.h"
 #include "app_config.h"
+#include "app_startup.h"
 
 #define TAG "WIFI"
 
@@ -177,7 +178,7 @@ static esp_err_t init_sntp(void)
     return ESP_OK;
 }
 
-static void sync_time(void)
+static bool sync_time(void)
 {
     int retry = 0;
     while (esp_netif_sntp_sync_wait(SNTP_SYNC_WAIT_MS / portTICK_PERIOD_MS) == ESP_ERR_TIMEOUT
@@ -193,11 +194,12 @@ static void sync_time(void)
 
     if (timeinfo.tm_year < (2020 - 1900))
     {
-        ESP_LOGE(TAG, "Time not set after %d retries. Restarting...", SNTP_SYNC_RETRY_COUNT);
-        esp_restart();
+        ESP_LOGE(TAG, "Time not set after %d retries", SNTP_SYNC_RETRY_COUNT);
+        return false;
     }
 
     ESP_LOGI(TAG, "System time: %s", asctime(&timeinfo));
+    return true;
 }
 
 /* ── Periodic time re-sync ──────────────────────────────────────── */
@@ -224,7 +226,10 @@ static void time_sync_task(void *arg)
         }
     }
 
-    sync_time();
+    if (!sync_time())
+    {
+        ESP_LOGW(TAG, "Periodic time sync failed");
+    }
     vTaskDelete(NULL);
 }
 
@@ -243,22 +248,39 @@ bool init_wifi(void)
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "WiFi STA init failed: %s", esp_err_to_name(ret));
+        app_startup_set(APP_STARTUP_WIFI, APP_STARTUP_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
         return false;
     }
 
     if (!wait_for_connection())
     {
+        app_startup_set(APP_STARTUP_WIFI, APP_STARTUP_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
         return false;
     }
+    app_startup_set(APP_STARTUP_WIFI, APP_STARTUP_OK);
 
     ret = init_sntp();
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "SNTP init failed: %s", esp_err_to_name(ret));
+        app_startup_set(APP_STARTUP_TIME, APP_STARTUP_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
         return false;
     }
 
-    sync_time();
+    if (!sync_time())
+    {
+        app_startup_set(APP_STARTUP_TIME, APP_STARTUP_ERROR);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
+        return false;
+    }
+    app_startup_set(APP_STARTUP_TIME, APP_STARTUP_OK);
     return true;
 }
 

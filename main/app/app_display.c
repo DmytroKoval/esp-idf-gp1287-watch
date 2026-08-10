@@ -19,11 +19,13 @@
 #include <esp_timer.h>
 #include <esp_system.h>
 #include <esp_lcd_types.h>
+#include "sdkconfig.h"
 
 #include "u8g2.h"
 #include "esp_lcd_panel_gp1287.h"
 #include "../app_config.h"
 #include "app_alert.h"
+#include "app_startup.h"
 #include "app_weather.h"
 
 #define V_MAX 3400                                   // Maximum voltage for ADC in mV
@@ -254,6 +256,105 @@ static void draw_alert(const app_alert_view_t *alert, time_t current_time)
     u8g2_DrawStr(&u8g2, text_center - (int)duration_width / 2, 28, duration_text);
 }
 
+static void draw_startup_screen(void)
+{
+    static const char *phase_text[APP_STARTUP_PHASE_COUNT] = {
+        "WiFi...",
+        "Time...",
+        "Weather...",
+        "Alerts...",
+    };
+    static const int baseline[APP_STARTUP_PHASE_COUNT] = { 11, 22, 33, 44 };
+
+    const app_startup_state_t startup = app_startup_get();
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+
+    for (int phase = 0; phase < APP_STARTUP_PHASE_COUNT; ++phase)
+    {
+        const app_startup_status_t status = app_startup_state_get(&startup, phase);
+        const char *status_text = status == APP_STARTUP_OK ? "ok"
+                                  : status == APP_STARTUP_ERROR ? "err" : "...";
+
+        u8g2_DrawStr(&u8g2, 72, baseline[phase], phase_text[phase]);
+        const u8g2_uint_t status_width = u8g2_GetStrWidth(&u8g2, status_text);
+        u8g2_DrawStr(&u8g2, 184 - (int)status_width, baseline[phase], status_text);
+    }
+}
+
+static bool is_duty_mode(const struct tm *timeinfo,
+                         const app_alert_view_t *alert)
+{
+    if (alert->replace_weather)
+    {
+        return false;
+    }
+
+    if (display_brightness <= CONFIG_NIGHT_MODE_BRIGHTNESS_THRESHOLD)
+    {
+        return true;
+    }
+
+    return timeinfo->tm_hour >= 23 || timeinfo->tm_hour < 6;
+}
+
+static void draw_duty_screen(const struct tm *timeinfo, const char *time_text)
+{
+    static const int day_x[] = { 64, 79, 93, 107, 121, 135, 151 };
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
+    const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
+    u8g2_DrawFrame(&u8g2, 68, 1, 121, 26);
+    u8g2_DrawStr(&u8g2, 128 - (int)time_width / 2, 24, time_text);
+
+    struct tm sunday = *timeinfo;
+    sunday.tm_mday -= sunday.tm_wday;
+    sunday.tm_hour = 12;
+    mktime(&sunday);
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    for (int day_index = 0; day_index < 7; ++day_index)
+    {
+        struct tm day = sunday;
+        day.tm_mday += day_index;
+        mktime(&day);
+
+        char day_text[3];
+        snprintf(day_text, sizeof(day_text), "%2d", day.tm_mday);
+        u8g2_DrawStr(&u8g2, day_x[day_index], 48, day_text);
+    }
+
+    u8g2_SetDrawColor(&u8g2, 2);
+    u8g2_DrawRBox(&u8g2, day_x[timeinfo->tm_wday], 38, 15, 12, 1);
+    u8g2_SetDrawColor(&u8g2, 1);
+
+    char month[4];
+    strftime(month, sizeof(month), "%b", timeinfo);
+    u8g2_DrawStr(&u8g2, 169, 49, month);
+}
+
+static void draw_main_screen(const struct tm *timeinfo, const char *time_text,
+                             const char *date_text, time_t current_time,
+                             const app_alert_view_t *alert)
+{
+    u8g2_DrawRFrame(&u8g2, 2, 2, 129, 46, 2);
+    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
+    const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
+    u8g2_DrawStr(&u8g2, 66 - (int)time_width / 2, 29, time_text);
+    draw_seconds_scale(timeinfo->tm_sec);
+
+    if (alert->replace_weather)
+    {
+        draw_alert(alert, current_time);
+    }
+    else
+    {
+        draw_weather();
+    }
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    u8g2_DrawStr(&u8g2, 144, 46, date_text);
+}
+
 static void render_display(time_t current_time)
 {
     static bool show_colon = false;
@@ -276,24 +377,19 @@ static void render_display(time_t current_time)
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_SetFontMode(&u8g2, 1);
 
-    u8g2_DrawRFrame(&u8g2, 2, 2, 129, 46, 2);
-    u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
-    const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
-    u8g2_DrawStr(&u8g2, 66 - (int)time_width / 2, 29, time_text);
-    draw_seconds_scale(timeinfo.tm_sec);
-
     const app_alert_view_t alert = app_alert_get_view();
-    if (alert.replace_weather)
+    if (app_startup_should_show())
     {
-        draw_alert(&alert, current_time);
+        draw_startup_screen();
+    }
+    else if (is_duty_mode(&timeinfo, &alert))
+    {
+        draw_duty_screen(&timeinfo, time_text);
     }
     else
     {
-        draw_weather();
+        draw_main_screen(&timeinfo, time_text, date_text, current_time, &alert);
     }
-
-    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
-    u8g2_DrawStr(&u8g2, 144, 46, date_text);
 
     if (second_frame)
     {
