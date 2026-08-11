@@ -30,7 +30,9 @@ void app_main()
 
     app_startup_init();
     setup_display();
-    // test_display();
+    
+    // test_display(20);
+
     // while(1)
     // {
     //     vTaskDelay(pdMS_TO_TICKS(1000));

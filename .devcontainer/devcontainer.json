@@ -1,0 +1,29 @@
+{
+  "name": "ESP-IDF QEMU",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=gp1247-watch-build,target=${containerWorkspaceFolder}/build,type=volume"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "/bin/bash"
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "idf.gitPath": "/usr/bin/git"
+      }
+      ,
+      "extensions": [
+        "espressif.esp-idf-extension",
+        "espressif.esp-idf-web"
+      ]
+    }
+  },
+  "runArgs": ["--privileged"]
+}

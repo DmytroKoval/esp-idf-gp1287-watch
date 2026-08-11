@@ -45,6 +45,8 @@ static uint8_t *gbuf = NULL;
 
 static esp_lcd_panel_handle_t display_handle = NULL;
 
+static bool force_duty_mode = false;
+
 static volatile uint16_t display_brightness;
 
 TaskHandle_t adc_task_handle = NULL;
@@ -284,6 +286,11 @@ static void draw_startup_screen(void)
 static bool is_duty_mode(const struct tm *timeinfo,
                          const app_alert_view_t *alert)
 {
+    if (force_duty_mode)
+    {
+        return true;
+    }
+
     if (alert->replace_weather)
     {
         return false;
@@ -299,12 +306,13 @@ static bool is_duty_mode(const struct tm *timeinfo,
 
 static void draw_duty_screen(const struct tm *timeinfo, const char *time_text)
 {
+    static const u8g2_uint_t calendar_baseline = 45;
     static const int day_x[] = { 64, 79, 93, 107, 121, 135, 151 };
 
     u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
     const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
-    u8g2_DrawFrame(&u8g2, 68, 1, 121, 26);
-    u8g2_DrawStr(&u8g2, 128 - (int)time_width / 2, 24, time_text);
+    u8g2_DrawRFrame(&u8g2, 68, 1, 121, 29, 1);
+    u8g2_DrawStr(&u8g2, 128 - (int)time_width / 2, 26, time_text);
 
     struct tm sunday = *timeinfo;
     sunday.tm_mday -= sunday.tm_wday;
@@ -320,16 +328,21 @@ static void draw_duty_screen(const struct tm *timeinfo, const char *time_text)
 
         char day_text[3];
         snprintf(day_text, sizeof(day_text), "%2d", day.tm_mday);
-        u8g2_DrawStr(&u8g2, day_x[day_index], 48, day_text);
+        u8g2_DrawStr(&u8g2, day_x[day_index], calendar_baseline, day_text);
     }
 
     u8g2_SetDrawColor(&u8g2, 2);
-    u8g2_DrawRBox(&u8g2, day_x[timeinfo->tm_wday], 38, 15, 12, 1);
+    u8g2_DrawRBox(&u8g2, day_x[timeinfo->tm_wday] - 2, 35, 15, 12, 0);
+    
     u8g2_SetDrawColor(&u8g2, 1);
+
+    u8g2_SetDrawColor(&u8g2, 1);
+    u8g2_DrawRFrame(&u8g2, 149, 35, 15, 12, 1);
+    u8g2_DrawRFrame(&u8g2, 133, 35, 15, 12, 1);
 
     char month[4];
     strftime(month, sizeof(month), "%b", timeinfo);
-    u8g2_DrawStr(&u8g2, 169, 49, month);
+    u8g2_DrawStr(&u8g2, 169, calendar_baseline, month);
 }
 
 static void draw_main_screen(const struct tm *timeinfo, const char *time_text,
@@ -568,11 +581,13 @@ esp_err_t setup_display()
     return ret;
 }
 
-esp_err_t test_display()
+esp_err_t test_display(uint16_t brightness)
 {
-    esp_lcd_panel_set_brightness(display_handle, 20);
-    memset(gbuf, 0xFF, 256 * 16);
-    esp_lcd_panel_draw_bitmap(display_handle, 0, 0, 256, 128, gbuf);
+    // esp_lcd_panel_set_brightness(display_handle, 20);
+    force_duty_mode = true;
+    display_brightness = brightness;
+    // memset(gbuf, 0xFF, 256 * 16);
+    // esp_lcd_panel_draw_bitmap(display_handle, 0, 0, 256, 128, gbuf);
     return ESP_OK;
 }
 
