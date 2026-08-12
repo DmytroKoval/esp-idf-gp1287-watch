@@ -306,23 +306,28 @@ static bool is_duty_mode(const struct tm *timeinfo,
 
 static void draw_duty_screen(const struct tm *timeinfo, const char *time_text)
 {
-    static const u8g2_uint_t calendar_baseline = 45;
-    static const int day_x[] = { 64, 79, 93, 107, 121, 135, 151 };
+    static const u8g2_uint_t calendar_baseline = 44;
+    static int day_x[7] = { 68 };
+    for (int i = 1; i < 7; ++i)
+    {
+        day_x[i] = day_x[i - 1] + 15;
+    }
 
     u8g2_SetFont(&u8g2, u8g2_font_profont29_mn);
     const u8g2_uint_t time_width = u8g2_GetStrWidth(&u8g2, time_text);
     u8g2_DrawRFrame(&u8g2, 68, 1, 121, 29, 1);
-    u8g2_DrawStr(&u8g2, 128 - (int)time_width / 2, 26, time_text);
+    u8g2_DrawStr(&u8g2, 128 - (int)time_width / 2, 25, time_text);
 
-    struct tm sunday = *timeinfo;
-    sunday.tm_mday -= sunday.tm_wday;
-    sunday.tm_hour = 12;
-    mktime(&sunday);
+    struct tm monday = *timeinfo;
+    int wday = (monday.tm_wday + 6) % 7;
+    monday.tm_mday -= wday;
+    monday.tm_hour = 12;
+    mktime(&monday);
 
     u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
     for (int day_index = 0; day_index < 7; ++day_index)
     {
-        struct tm day = sunday;
+        struct tm day = monday;
         day.tm_mday += day_index;
         mktime(&day);
 
@@ -332,17 +337,17 @@ static void draw_duty_screen(const struct tm *timeinfo, const char *time_text)
     }
 
     u8g2_SetDrawColor(&u8g2, 2);
-    u8g2_DrawRBox(&u8g2, day_x[timeinfo->tm_wday] - 2, 35, 15, 12, 0);
+    u8g2_DrawRBox(&u8g2, day_x[wday] - 2, 34, 15, 12, 0);
     
     u8g2_SetDrawColor(&u8g2, 1);
 
     u8g2_SetDrawColor(&u8g2, 1);
-    u8g2_DrawRFrame(&u8g2, 149, 35, 15, 12, 1);
-    u8g2_DrawRFrame(&u8g2, 133, 35, 15, 12, 1);
+    u8g2_DrawRFrame(&u8g2, day_x[5] - 2, 34, 15, 12, 1);
+    u8g2_DrawRFrame(&u8g2, day_x[6] - 2, 34, 15, 12, 1);
 
     char month[4];
     strftime(month, sizeof(month), "%b", timeinfo);
-    u8g2_DrawStr(&u8g2, 169, calendar_baseline, month);
+    u8g2_DrawStr(&u8g2, 172, calendar_baseline, month);
 }
 
 static void draw_main_screen(const struct tm *timeinfo, const char *time_text,
